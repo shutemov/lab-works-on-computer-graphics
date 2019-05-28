@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>3D in WebGL!</title>
+<meta charset="utf-8" />
+</head>
+<body>
+<!-- <canvas id="canvas3D" width="50" height="50">Ваш браузер не поддерживает элемент canvas</canvas> -->
+<input type="range" min="0" max="0.5" step="0.01" value="0" class="rotateX" placeholder="a" ><label for="volume">rotate x</label>
+<input type="range" min="0" max="0.5" step="0.01" value="0" class="rotateY" placeholder="a" > <label for="volume">rotate y</label>
+<input type="range" min="0" max="0.5" step="0.01" value="0" class="rotateZ" placeholder="a" > <label for="volume">rotate z</label>
+<br>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.5.0/math.js"></script>
+<script  type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+    attribute vec3 a_position;
+    attribute vec3 a_color;
+    uniform mat4 u_cube;
+    uniform mat4 u_camera;
+    varying vec3 v_color;
+    void main(void) {
+        v_color = a_color;
+        gl_Position = u_camera * u_cube * vec4(a_position, 1.0);
+    }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+    precision mediump float;
+    varying vec3 v_color;
+    void main(void) {
+        gl_FragColor = vec4(v_color.rgb, 1.0);
+    }
+</script>
+<script type="text/javascript">
+// Инициализация canvas и получение из него WebGL контекста
+
+var canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+var canvasIzometric = document.createElement('canvas');
+document.body.appendChild(canvasIzometric);
+var canvasDimetric = document.createElement('canvas');
+document.body.appendChild(canvasDimetric);
+
+var gl = canvas.getContext('webgl');
+var glIzometric = canvasIzometric.getContext('webgl');
+var glDimetric = canvasDimetric.getContext('webgl')
+
+
+// Устанавливаем размеры canvas и вьюпорт у WebGL
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+gl.viewport(0, 0, window.innerWidth, window.innerHeight);
+
+
+canvasIzometric.width = window.innerWidth;
+canvasIzometric.height = window.innerHeight;
+glIzometric.viewport(0, 0, window.innerWidth, window.innerHeight);
+
+
+canvasDimetric.width = window.innerWidth;
+canvasDimetric.height = window.innerHeight;
+glDimetric.viewport(0, 0, window.innerWidth, window.innerHeight);
+
+
+// Инициализация шейдеров
+var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(vertexShader, document.getElementById('vertexShader').text);
+gl.compileShader(vertexShader);
+
+var vertexShaderIzommetric = glIzometric.createShader(glIzometric.VERTEX_SHADER);
+glIzometric.shaderSource(vertexShaderIzommetric, document.getElementById('vertexShader').text);
+glIzometric.compileShader(vertexShaderIzommetric);
+
+var vertexShaderDimetric = glDimetric.createShader(glDimetric.VERTEX_SHADER);
+glDimetric.shaderSource(vertexShaderDimetric, document.getElementById('vertexShader').text);
+glDimetric.compileShader(vertexShaderDimetric);
+//конец инициализации шейдеров 
+
+
+if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS) || !glIzometric.getShaderParameter(vertexShaderIzommetric, glIzometric.COMPILE_STATUS) || !glDimetric.getShaderParameter(vertexShaderDimetric, glDimetric.COMPILE_STATUS) ) {
+    console.log(gl.getShaderInfoLog(vertexShader));
+    console.log(glIzometric.getShaderInfoLog(vertexShaderIzommetric));
+    console.log(glDimetric.getShaderInfoLog(vertexShaderDimetric));
+}
+
+//фрагмент шейдера для 3 канвасов
+var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(fragmentShader, document.getElementById('fragmentShader').text);
+gl.compileShader(fragmentShader);
+
+var fragmentShaderIzometric = glIzometric.createShader(glIzometric.FRAGMENT_SHADER);
+glIzometric.shaderSource(fragmentShaderIzometric, document.getElementById('fragmentShader').text);
+glIzometric.compileShader(fragmentShaderIzometric);
+
+var fragmentShaderDimetric = glDimetric.createShader(glDimetric.FRAGMENT_SHADER);
+glDimetric.shaderSource(fragmentShaderDimetric, document.getElementById('fragmentShader').text);
+glDimetric.compileShader(fragmentShaderDimetric);
+// конец фрагмент шейдера для 3 канвасов
+
+
+if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+    console.log(gl.getShaderInfoLog(fragmentShader));
+}
+// init программ для 3 канвасов
+var program = gl.createProgram();
+gl.attachShader(program, vertexShader);
+gl.attachShader(program, fragmentShader);
+gl.linkProgram(program);
+
+var programIzometric = glIzometric.createProgram();
+glIzometric.attachShader(programIzometric, vertexShaderIzommetric);
+glIzometric.attachShader(programIzometric, fragmentShaderIzometric);
+glIzometric.linkProgram(programIzometric);
+
+var programDimetric = glDimetric.createProgram();
+glDimetric.attachShader(programDimetric, vertexShaderDimetric);
+glDimetric.attachShader(programDimetric, fragmentShaderDimetric);
+glDimetric.linkProgram(programDimetric);
+// конец Init
+
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.log('Could not initialize shaders');
+}
+
+// Получим местоположение переменных в программе шейдеров
+var uCube = gl.getUniformLocation(program, 'u_cube');
+var uCamera = gl.getUniformLocation(program, 'u_camera');
+var aPosition = gl.getAttribLocation(program, 'a_position');
+var aColor = gl.getAttribLocation(program, 'a_color');
+
+var uCubeIzometric = glIzometric.getUniformLocation(programIzometric, 'u_cube');
+var uCameraIzometric = glIzometric.getUniformLocation(programIzometric, 'u_camera');
+var aPositionIzometric = glIzometric.getAttribLocation(programIzometric, 'a_position');
+var aColorIzometric = glIzometric.getAttribLocation(programIzometric, 'a_color');
+
+var uCubeDimetric = glDimetric.getUniformLocation(programDimetric, 'u_cube');
+var uCameraDimetric = glDimetric.getUniformLocation(programDimetric, 'u_camera');
+var aPositionDimetric = glDimetric.getAttribLocation(programDimetric, 'a_position');
+var aColorDimetric = glDimetric.getAttribLocation(programDimetric, 'a_color');
+
+
+var vertexBuffer = gl.createBuffer();
+var vertexBufferIzometric = glIzometric.createBuffer();
+var vertexBufferDimetric = glDimetric.createBuffer();
+
+var vertices = [
+    // Передняя грань
+    -1, -1, -1,
+    1, -1, -1,
+    -1, -1, 1,
+
+    1, -1, 1,
+    -1, -1, 1,
+    1, -1, -1,
+
+    // Задняя грань
+    -1, 1, -1,
+    -1, 1, 1,
+    1, 1, -1,
+
+    1, 1, 1,
+    1, 1, -1,
+    -1, 1, 1,
+
+    // Нижняя грань
+    -1, -1, -1,
+    -1, 1, -1,
+    1, -1, -1,
+
+    1, 1, -1,
+    1, -1, -1,
+    -1, 1, -1,
+
+    // Верхняя грань
+    -1, -1, 1,
+    1, -1, 1,
+    -1, 1, 1,
+
+    1, 1, 1,
+    -1, 1, 1,
+    1, -1, 1,
+
+    // Левая грань
+    -1, -1, -1,
+    -1, -1, 1,
+    -1, 1, -1,
+
+    -1, 1, 1,
+    -1, 1, -1,
+    -1, -1, 1,
+
+    // Правая грань
+    1, -1, -1,
+    1, 1, -1,
+    1, -1, 1,
+
+    1, 1, 1,
+    1, -1, 1,
+    1, 1, -1
+];
+
+//функция разбиения одномерног овектора на 2 мерный 
+function array_chunk(input, size){
+  for(var x, i = 0, c = -1, l = input.length, n = []; i < l; i++){  
+    (x = i % size) ? n[c][x] = input[i] : n[++c] = [input[i]];
+  }
+  return n;
+}
+
+function izometCoefficientCheck(shapeBeforeTransform,shapeAfterTransform){
+	ch = 0
+	zn = 0
+	console.log("figure before")
+	console.log(shapeBeforeTransform)
+	console.log("figure after")
+	console.log(shapeAfterTransform)
+	for (var i = 0; i < 35; i+=2) {
+			zn+=Math.sqrt(
+				Math.pow(shapeBeforeTransform[i+1][0]-shapeBeforeTransform[i][0],2)
+				+Math.pow(shapeBeforeTransform[i+1][1]-shapeBeforeTransform[i][1],2)
+				+Math.pow(shapeBeforeTransform[i+1][2]-shapeBeforeTransform[i+1][2],2)
+				)
+			ch += Math.sqrt(
+				Math.pow(shapeAfterTransform[i+1][0]-shapeAfterTransform[i][0],2)
+				+Math.pow(shapeAfterTransform[i+1][1]-shapeAfterTransform[i][1],2)
+				)
+		}
+	result = ch/zn
+	console.log(result)
+}
+
+
+
+var mass2dVertices = array_chunk(vertices, 3);
+console.log(mass2dVertices)
+
+// добавляем в последний столбец нули
+for (var i = 0; i < mass2dVertices.length; i++) {
+	mass2dVertices[i][mass2dVertices[i].length] = 0
+}
+
+console.log(mass2dVertices)
+
+
+
+//матрица коэф.изометрии
+var izometricMatrix = math.matrix([
+[0.707,-0.408,0,0],[0, 0.816, 0, 0],[-0.707, -0.408,0,0],[0,0,0,1]])
+
+
+//матрица коэф.диметрии
+var dimetricMatrix = math.matrix(
+	[[0.926,0.134,0,0],[0,0.935,0,0],[0.378,-0.327,0,0],[0,0,0,1]])
+
+//умножение одно, подставляй вторым аргументном нужную матрицу коэфов.
+var multip = math.multiply(mass2dVertices,izometricMatrix)
+var multipDimetric = math.multiply(mass2dVertices,dimetricMatrix)
+
+
+
+console.log("multip Data")
+console.log(multip._data)
+
+
+
+// пустой двумерный массив (да, в жсе так)
+var soloMass = [];
+var soloMassDimetric =[];
+
+for(var i = 0; i < 36; i++){
+
+    soloMass[i] = [];
+    soloMassDimetric[i] = []
+
+    for (var j = 0; j < 3; j++){
+
+        soloMass[i][j] = 0;
+        soloMassDimetric[i][j] = 0;
+
+}}
+
+
+
+// console.log(multip._data.length)
+
+//заполняем пустой массив данными матрицы после умножения
+for (var i = 0; i < 36; i++) {
+	
+	for (var j = 0; j < 3; j++) {
+		
+		soloMass[i][j]  = multip._data[i][j]
+		soloMassDimetric[i][j] = multipDimetric._data[i][j]
+	}
+}
+
+//вычисление коэф. скажения изометрческой проекции
+izometCoefficientCheck(mass2dVertices,soloMass)
+
+// console.log("soloMass before input data")
+// console.log( soloMass)
+
+console.log("solomasss")
+console.log(soloMass)
+//делаем новый массив (одномерный) из двумерного soloMass, который получил цифры после умножения.
+var result = [].concat(...soloMass);
+var resultDimetric = [].concat(...soloMassDimetric)
+//одномерный, потому что этот вектор нужно отправить будет ниже.
+
+
+
+gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+glIzometric.bindBuffer(glIzometric.ARRAY_BUFFER, vertexBufferIzometric)
+glDimetric.bindBuffer(glDimetric.ARRAY_BUFFER, vertexBufferDimetric)
+
+//тут в newFloat отправляешь одномерный вектор (результат перемножения матриц.)
+// вектор result = результат второго аргумента в строке 173. Можешь просто раскомментить 224. и закоментить 225, чтобы поменять изображение.
+
+// gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+glIzometric.bufferData(glIzometric.ARRAY_BUFFER, new Float32Array(result),glIzometric.STATIC_DRAW)
+glDimetric.bufferData(glDimetric.ARRAY_BUFFER, new Float32Array(resultDimetric),glDimetric.STATIC_DRAW)
+
+var colorBuffer = gl.createBuffer();
+var colorBufferIzometric = glIzometric.createBuffer();
+var colorBufferDimetric = glDimetric.createBuffer();
+var colors = [
+    // Передняя грань (нижняя грань) [в скобках эмпирически выявленная правильная сторона, почему изначально были написаны неправильные - не знаю]
+   0,0,0,
+   0,0,0,
+   0,0,0,
+
+   0.3,0.3,0.3,
+   0.3,0.3,0.3,
+   0.3,0.3,0.3,
+
+    // Задняя грань (верхняя грань)
+   0,0,0,
+   0,0,0,
+   0,0,0,
+
+   0.3,0.3,0.3,
+   0.3,0.3,0.3,
+   0.3,0.3,0.3,
+
+    // Нижняя грань (задняя грань)
+    0.5, 0.7, 1,
+    0.5, 0.7, 1,
+    0.5, 0.7, 1,
+    0.5, 0.7, 1,
+    0.5, 0.7, 1,
+    0.5, 0.7, 1,
+
+    // Верхняя грань (передняя фронт)
+ 	0.6,0.6,0.6,
+ 	0.6,0.6,0.6,
+ 	0.6,0.6,0.6,
+ 	0.6,0.6,0.6,
+ 	0.6,0.6,0.6,
+ 	0.6,0.6,0.6,
+
+    // Левая грань
+   0,0,0,
+   0,0,0,
+   0,0,0,
+   0,0,0,
+   0,0,0,
+   0,0,0,
+
+    // right face
+   0,0,0,
+   0,0,0,
+   0,0,0,
+   0,0,0,
+   0,0,0,
+   0,0,0,
+];
+
+
+// console.log('color: '+ soloMassColors)
+
+gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+glIzometric.bindBuffer(glIzometric.ARRAY_BUFFER, colorBufferIzometric);
+glIzometric.bufferData(glIzometric.ARRAY_BUFFER, new Float32Array(colors), glIzometric.STATIC_DRAW)
+
+glDimetric.bindBuffer(glDimetric.ARRAY_BUFFER, colorBufferDimetric);
+glDimetric.bufferData(glDimetric.ARRAY_BUFFER, new Float32Array(colors), glDimetric.STATIC_DRAW)
+
+var cameraMatrix = mat4.create();
+mat4.perspective(cameraMatrix, 1, window.innerWidth / window.innerHeight, 0.1, 1000);
+mat4.translate(cameraMatrix, cameraMatrix, [0, 0, -7]); //вектор камеры -7 по z на себя
+
+// Создадим единичную матрицу положения куба
+var cubeMatrix = mat4.create();
+
+var firstMatrix = mat4.create(new Float64Array(vertices));
+console.log(firstMatrix)
+
+// Запомним время последней отрисовки кадра
+var lastRenderTime = Date.now();
+
+var rotateX = document.querySelector(".rotateX");
+var rotateY = document.querySelector(".rotateY");
+var rotateZ = document.querySelector(".rotateZ");
+
+function render() {
+    // Запрашиваем рендеринг на следующий кадр
+    requestAnimationFrame(render);
+   
+    mat4.rotateX(cubeMatrix, cubeMatrix, rotateX.value);
+    // Вращаем куб относительно оси Y
+    mat4.rotateY(cubeMatrix, cubeMatrix, rotateY.value);
+    // Вращаем куб относительно оси Z
+    mat4.rotateZ(cubeMatrix, cubeMatrix,  rotateZ.value);
+
+    // Очищаем сцену, закрашивая её в белый цвет
+    gl.clearColor(1.0, 1.0, 1.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+
+    // Включаем фильтр глубины
+    gl.enable(gl.DEPTH_TEST);
+
+    gl.useProgram(program);
+  
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.enableVertexAttribArray(aPosition);
+    gl.vertexAttribPointer(aPosition, 3, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.enableVertexAttribArray(aColor);
+    gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 0, 0);
+
+    gl.uniformMatrix4fv(uCube, false, cubeMatrix);
+    gl.uniformMatrix4fv(uCamera, false, cameraMatrix);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 36);
+
+}
+
+function renderIzometric()
+{
+ // Запрашиваем рендеринг на следующий кадр
+    requestAnimationFrame(renderIzometric);
+
+    // Очищаем сцену, закрашивая её в белый цвет
+    glIzometric.clearColor(1.0, 1.0, 1.0, 1.0);
+    glIzometric.clear(glIzometric.COLOR_BUFFER_BIT | glIzometric.DEPTH_BUFFER_BIT);
+
+
+    // Включаем фильтр глубины
+    glIzometric.enable(glIzometric.DEPTH_TEST);
+
+    glIzometric.useProgram(programIzometric);
+  
+
+    glIzometric.bindBuffer(glIzometric.ARRAY_BUFFER, vertexBufferIzometric);
+    glIzometric.enableVertexAttribArray(aPositionIzometric);
+    glIzometric.vertexAttribPointer(aPositionIzometric, 3, glIzometric.FLOAT, false, 0, 0);
+
+    glIzometric.bindBuffer(glIzometric.ARRAY_BUFFER, colorBufferIzometric);
+    glIzometric.enableVertexAttribArray(aColorIzometric);
+    glIzometric.vertexAttribPointer(aColorIzometric, 3, glIzometric.FLOAT, false, 0, 0);
+
+    glIzometric.uniformMatrix4fv(uCubeIzometric, false, cubeMatrix);
+    glIzometric.uniformMatrix4fv(uCameraIzometric, false, cameraMatrix);
+
+    glIzometric.drawArrays(glIzometric.TRIANGLES, 0, 36);
+
+}
+
+function renderDimetric()
+{
+ // Запрашиваем рендеринг на следующий кадр
+    requestAnimationFrame(renderDimetric);
+
+    // Очищаем сцену, закрашивая её в белый цвет
+    glDimetric.clearColor(1.0, 1.0, 1.0, 1.0);
+    glDimetric.clear(glDimetric.COLOR_BUFFER_BIT | glDimetric.DEPTH_BUFFER_BIT);
+
+
+    // Включаем фильтр глубины
+    glDimetric.enable(glDimetric.DEPTH_TEST);
+
+    glDimetric.useProgram(programDimetric);
+  
+
+    glDimetric.bindBuffer(glDimetric.ARRAY_BUFFER, vertexBufferDimetric);
+    glDimetric.enableVertexAttribArray(aPositionDimetric);
+    glDimetric.vertexAttribPointer(aPositionDimetric, 3, glDimetric.FLOAT, false, 0, 0);
+
+    glDimetric.bindBuffer(glDimetric.ARRAY_BUFFER, colorBufferDimetric);
+    glDimetric.enableVertexAttribArray(aColorDimetric);
+    glDimetric.vertexAttribPointer(aColorDimetric, 3, glDimetric.FLOAT, false, 0, 0);
+
+    glDimetric.uniformMatrix4fv(uCubeDimetric, false, cubeMatrix);
+    glDimetric.uniformMatrix4fv(uCameraDimetric, false, cameraMatrix);
+
+    glDimetric.drawArrays(glDimetric.TRIANGLES, 0, 36);
+
+}
+
+render();
+renderIzometric();
+renderDimetric();
+</script>
+</body>
+</html>
